@@ -429,9 +429,11 @@ var askedPersist=false;
 function persist(){
   clearTimeout(saveT); saveT=0;
   var json;
-  try{ cur().updated=Date.now(); json=JSON.stringify(S); }catch(e){return}
+  try{ var _o=UI.tab==='receipts'?S.receipts[S.curR]:UI.tab==='contracts'?S.contracts[S.curC]:UI.tab==='quote'?cur():null; if(_o) _o.updated=Date.now(); json=JSON.stringify(S); }catch(e){return}
   var ok=false;
   try{ localStorage.setItem(LS,json); ok=true; }catch(e){}
+  try{touchMeta()}catch(e){}
+  schedulePush();
   idbSet(json).then(function(r){ if(ok||r) setStatus('Guardado'); else setStatus('No se pudo guardar en este navegador'); });
   if(!askedPersist){ askedPersist=true; try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){} }
 }
@@ -570,6 +572,84 @@ function fitPreview(){
 }
 window.addEventListener('resize',fitPreview);
 
+/* ---------- sincronización (Supabase) ---------- */
+var SB_URL='https://bgpejakebtejgjforxse.supabase.co', SB_KEY='sb_publishable_Olky2QkY-RRLctdMteeGCQ_GNGEXp0m';
+var SYNCK='cotizador.sync';
+var SY={code:'',state:'off',last:0,busy:false,pushT:0,msg:''};
+try{ SY.code=localStorage.getItem(SYNCK)||''; }catch(e){}
+try{ var hm=/[#&]sync=([A-Za-z0-9_\-]{16,64})/.exec(location.hash||''); if(hm){SY.code=hm[1]; try{localStorage.setItem(SYNCK,SY.code)}catch(e){} try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}} }catch(e){}
+function rpc(fn,body){
+  return fetch(SB_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); });
+}
+function metaSig(){return JSON.stringify([S.profile,S.lib,S.ctpl])}
+var lastMetaSig=null;
+function touchMeta(){ var sg=metaSig(); if(lastMetaSig===null){lastMetaSig=sg; if(!S.metaAt) S.metaAt=1; return} if(sg!==lastMetaSig){lastMetaSig=sg; S.metaAt=Date.now()} }
+function mergeMap(a,b,del){
+  var out={}, ids={}; Object.keys(a||{}).forEach(function(k){ids[k]=1}); Object.keys(b||{}).forEach(function(k){ids[k]=1});
+  Object.keys(ids).forEach(function(k){
+    var x=(a||{})[k], y=(b||{})[k], w=!x?y:(!y?x:((y.updated||0)>(x.updated||0)?y:x));
+    if(del[k]&&del[k]>=(w.updated||0)) return;
+    out[k]=w;
+  });
+  return out;
+}
+function mergeRemote(R){
+  var del=Object.assign({},S.del||{},R.del||{});
+  var cur0=S.cur, cr=S.curR, cc=S.curC;
+  if(S.demo&&Object.keys(R.quotes||{}).length){ S.quotes={}; cur0=''; }
+  if(S.receipts[cr]&&S.receipts[cr].fresh&&Object.keys(R.receipts||{}).length){ delete S.receipts[cr]; cr=''; }
+  if(S.contracts[cc]&&S.contracts[cc].fresh&&Object.keys(R.contracts||{}).length){ delete S.contracts[cc]; cc=''; }
+  var m={quotes:mergeMap(S.quotes,R.quotes,del),receipts:mergeMap(S.receipts,R.receipts,del),contracts:mergeMap(S.contracts,R.contracts,del)};
+  var remoteMeta=(R.metaAt||0)>(S.metaAt||0);
+  if(remoteMeta){ S.profile=R.profile||S.profile; S.lib=R.lib||S.lib; S.ctpl=R.ctpl||S.ctpl; S.metaAt=R.metaAt; lastMetaSig=metaSig(); }
+  S.quotes=m.quotes; S.receipts=m.receipts; S.contracts=m.contracts; S.del=del;
+  S.cur=cur0; S.curR=cr; S.curC=cc; S.demo=false;
+  Object.keys(del).forEach(function(k){ if(Date.now()-del[k]>90*864e5) delete del[k]; });
+  normalize();
+}
+function syncStatus(st,msg){ SY.state=st; SY.msg=msg||''; var el=$('syncSt'); if(el) el.textContent=syncLabel(); }
+function syncLabel(){
+  if(!SY.code) return 'Sincronización apagada';
+  return {ok:'Sincronizado'+(SY.last?' · '+new Date(SY.last).toLocaleTimeString():''),busy:'Sincronizando…',err:'Sin conexión: se reintentará solo',off:'Conectando…'}[SY.state]||'';
+}
+function pullPush(opts){
+  if(!SY.code||SY.busy) return Promise.resolve();
+  SY.busy=true; syncStatus('busy');
+  return rpc('cz_get',{p_code:SY.code}).then(function(rows){
+    var R=rows&&rows[0]; var changed=false;
+    if(R&&R.data){ var before=JSON.stringify([S.quotes,S.receipts,S.contracts,S.profile,S.lib,S.ctpl]); mergeRemote(R.data); changed=before!==JSON.stringify([S.quotes,S.receipts,S.contracts,S.profile,S.lib,S.ctpl]); }
+    touchMeta();
+    var nf=function(m){var o={}; Object.keys(m).forEach(function(k){if(!m[k].fresh) o[k]=m[k]}); return o};
+    var payload=JSON.parse(JSON.stringify({quotes:S.quotes,receipts:nf(S.receipts),contracts:nf(S.contracts),profile:S.profile,lib:S.lib,ctpl:S.ctpl,del:S.del||{},metaAt:S.metaAt||0}));
+    var ts=Date.now();
+    return rpc('cz_put',{p_code:SY.code,p_data:payload,p_updated:ts}).then(function(){
+      SY.last=ts; SY.busy=false; syncStatus('ok');
+      if(changed){ try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){} idbSet(JSON.stringify(S)); renderEditor(); schedulePreview(); setStatus('Datos sincronizados'); }
+    });
+  }).catch(function(){ SY.busy=false; syncStatus('err'); });
+}
+function schedulePush(){ if(!SY.code) return; clearTimeout(SY.pushT); SY.pushT=setTimeout(function(){pullPush()},1800); }
+function setSyncCode(c){
+  SY.code=c||''; try{ if(c) localStorage.setItem(SYNCK,c); else localStorage.removeItem(SYNCK); }catch(e){}
+  if(c) pullPush(); else syncStatus('off'); renderEditor();
+}
+function newSyncCode(){var a=new Uint8Array(18); (window.crypto||{getRandomValues:function(x){for(var i=0;i<x.length;i++)x[i]=Math.random()*256}}).getRandomValues(a); return Array.prototype.map.call(a,function(b){return 'abcdefghjkmnpqrstuvwxyz23456789'[b%31]}).join('')}
+function syncCard(){
+  var h='<div class="card"><h2>Sincronización</h2><p class="hint">Conecta varios dispositivos (computador, teléfono) para ver los mismos datos. Usa el mismo código en todos.</p>';
+  if(SY.code){
+    var link=location.href.split('#')[0]+'#sync='+SY.code;
+    h+='<p class="hint"><b id="syncSt">'+esc(syncLabel())+'</b></p>'+
+      '<label class="f">Código de acceso<input type="text" readonly value="'+esc(SY.code)+'" onfocus="this.select()"></label>'+
+      '<label class="f">Enlace para abrir en otro dispositivo<input type="text" readonly value="'+esc(link)+'" onfocus="this.select()"></label>'+
+      '<div class="row"><button class="btn" data-act="sync-now">Sincronizar ahora</button><button class="btn dng" data-act="sync-off">'+(UI.confirm==='sync'?'¿Desconectar?':'Desconectar')+'</button></div>';
+  }else{
+    h+='<div class="row"><button class="btn pri" data-act="sync-new">Activar y crear código</button></div>'+
+      '<label class="f">¿Ya tienes un código?<input type="text" id="syncIn" placeholder="Pega aquí el código"></label><div><button class="btn" data-act="sync-join">Conectar con este código</button></div>';
+  }
+  return h+'</div>';
+}
+
 /* ---------- recibos y contratos ---------- */
 var curR=function(){return S.receipts[S.curR]};
 var curC=function(){return S.contracts[S.curC]};
@@ -585,8 +665,8 @@ function blankContract(){
     clientTitle:'Sra.',clientName:'',clientCI:'',total:'',advance:'',signCity:String(p.city||'Santa Cruz').split(/\s+de\s+la\s+/i)[0],signDate:todayISO(),
     intro:t.intro,clauses:t.clauses.map(function(c){return {id:uid(),title:c[0]||c.title,text:c[1]!==undefined?c[1]:c.text}}),signed:false,updated:Date.now()};
 }
-function ensureR(){ if(!S.receipts[S.curR]){var ks=Object.keys(S.receipts); if(ks.length) S.curR=ks[0]; else{var r=blankReceipt(); S.receipts[r.id]=r; S.curR=r.id}} }
-function ensureC(){ if(!S.contracts[S.curC]){var ks=Object.keys(S.contracts); if(ks.length) S.curC=ks[0]; else{var c=blankContract(); S.contracts[c.id]=c; S.curC=c.id}} }
+function ensureR(){ if(!S.receipts[S.curR]){var ks=Object.keys(S.receipts); if(ks.length) S.curR=ks[0]; else{var r=blankReceipt(); r.fresh=true; S.receipts[r.id]=r; S.curR=r.id}} }
+function ensureC(){ if(!S.contracts[S.curC]){var ks=Object.keys(S.contracts); if(ks.length) S.curC=ks[0]; else{var c=blankContract(); c.fresh=true; S.contracts[c.id]=c; S.curC=c.id}} }
 function upWords(n,p){
   var cents=Math.round((n-Math.floor(n))*100);
   return (words(n)+' '+String(cents).padStart(2,'0')+'/100 '+(p.currencyName||'bolivianos')).toUpperCase().replace(/\s+/g,' ');
@@ -745,18 +825,19 @@ async function buildAny(host){
 }
 function docAct(a,el){
   var id=el.dataset.b, ii=+el.dataset.i, kk;
+  if(a[0]==='r'&&a[1]==='-'&&curR()) curR().fresh=false; if(a[0]==='c'&&a[1]==='-'&&curC()) curC().fresh=false; if(a[0]==='k'&&curC()) curC().fresh=false;
   switch(a){
     case 'r-sign': curR().signed=!curR().signed; return true;
     case 'r-new':{var r=blankReceipt(); S.receipts[r.id]=r; S.curR=r.id; setStatus('Recibo nuevo'); return true}
     case 'r-open': S.curR=id; return true;
     case 'r-dup':{var c=JSON.parse(JSON.stringify(S.receipts[id])); c.id=uid(); c.number=seq(S.receipts); c.date=todayISO(); c.updated=Date.now(); S.receipts[c.id]=c; S.curR=c.id; return true}
-    case 'r-del':{kk='r'+id; if(UI.confirm!==kk){UI.confirm=kk; renderEditor(); return 'stop'} delete S.receipts[id]; UI.confirm=''; ensureR(); return true}
+    case 'r-del':{kk='r'+id; if(UI.confirm!==kk){UI.confirm=kk; renderEditor(); return 'stop'} (S.del=S.del||{})[id]=Date.now(); delete S.receipts[id]; UI.confirm=''; ensureR(); return true}
     case 'r-fromq':{var f=fromQuote(), r2=curR(); if(f.client) r2.from=f.client; if(f.total) r2.total=String(f.total); if(f.ref) r2.concept='Servicio de '+(f.services||'sonido e iluminación')+(f.ref?' — '+f.ref:''); return true}
     case 'c-sign': curC().signed=!curC().signed; return true;
     case 'c-new':{var c1=blankContract(); S.contracts[c1.id]=c1; S.curC=c1.id; setStatus('Contrato nuevo'); return true}
     case 'c-open': S.curC=id; return true;
     case 'c-dup':{var c2=JSON.parse(JSON.stringify(S.contracts[id])); c2.id=uid(); c2.number=seq(S.contracts); c2.updated=Date.now(); S.contracts[c2.id]=c2; S.curC=c2.id; return true}
-    case 'c-del':{kk='c'+id; if(UI.confirm!==kk){UI.confirm=kk; renderEditor(); return 'stop'} delete S.contracts[id]; UI.confirm=''; ensureC(); return true}
+    case 'c-del':{kk='c'+id; if(UI.confirm!==kk){UI.confirm=kk; renderEditor(); return 'stop'} (S.del=S.del||{})[id]=Date.now(); delete S.contracts[id]; UI.confirm=''; ensureC(); return true}
     case 'c-fromq':{var f2=fromQuote(), c3=curC(); if(f2.client) c3.clientName=f2.client; if(f2.total) c3.total=String(f2.total); if(f2.ref) c3.title=f2.ref; if(f2.place) c3.place=f2.place; if(f2.services) c3.services=f2.services; return true}
     case 'k-up': move(curC().clauses,ii,-1); return true;
     case 'k-down': move(curC().clauses,ii,1); return true;
@@ -868,7 +949,7 @@ function tabFiles(){
       '<button class="btn sm" data-act="q-dup" data-b="'+k+'">Duplicar</button>'+
       '<button class="btn sm dng" data-act="q-del" data-b="'+k+'">'+(UI.confirm==='q'+k?'¿Eliminar?':'Eliminar')+'</button></div></div></div>';
   });
-  h+='</div><div class="card"><h2>Respaldo</h2><div class="row"><button class="btn" data-act="export">Descargar respaldo</button><button class="btn" data-act="import">Restaurar respaldo</button></div></div>';
+  h+='</div>'+syncCard()+'<div class="card"><h2>Respaldo</h2><div class="row"><button class="btn" data-act="export">Descargar respaldo</button><button class="btn" data-act="import">Restaurar respaldo</button></div></div>';
   return h;
 }
 function renderEditor(){
@@ -887,9 +968,9 @@ function setPath(b,v){
   else if(p[0]==='i') q.sections[+p[1]].items[+p[2]][p[3]]=v;
   else if(p[0]==='l') S.lib[+p[1]][p[2]]=v;
   else if(p[0]==='x') S.profile.extras[+p[1]][p[2]]=v;
-  else if(p[0]==='r') curR()[p[1]]=v;
-  else if(p[0]==='c') curC()[p[1]]=v;
-  else if(p[0]==='k') curC().clauses[+p[1]][p[2]]=v;
+  else if(p[0]==='r'){ curR()[p[1]]=v; curR().fresh=false }
+  else if(p[0]==='c'){ curC()[p[1]]=v; curC().fresh=false }
+  else if(p[0]==='k'){ curC().clauses[+p[1]][p[2]]=v; curC().fresh=false }
 }
 document.addEventListener('input',function(e){
   var t=e.target, b=t.dataset&&t.dataset.b; if(!b||t.tagName==='BUTTON') return;
@@ -912,7 +993,7 @@ function move(arr,i,d){var j=i+d; if(j<0||j>=arr.length) return; var x=arr.splic
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]'); if(!el) return;
   var a=el.dataset.act, q=cur(), si=+el.dataset.s, ii=+el.dataset.i, id=el.dataset.b;
-  if(a!=='q-del'&&a!=='lib-del'&&a!=='r-del'&&a!=='c-del'&&UI.confirm){UI.confirm=''}
+  if(a!=='q-del'&&a!=='lib-del'&&a!=='r-del'&&a!=='c-del'&&a!=='sync-off'&&UI.confirm){UI.confirm=''}
   var dr=docAct(a,el); if(dr==='stop') return; if(dr){renderEditor(); changed(); return}
   switch(a){
     case 'demo-off': S.demo=false; break;
@@ -941,7 +1022,11 @@ document.addEventListener('click',function(e){
     case 'q-open': S.cur=id; break;
     case 'q-dup':{var src=S.quotes[id], c=JSON.parse(JSON.stringify(src)); c.id=uid(); c.number=nextNumber(S); c.status='borrador'; c.date=todayISO(); c.updated=Date.now(); S.quotes[c.id]=c; S.cur=c.id; UI.tab='quote'; break}
     case 'q-del':{var kk='q'+id; if(UI.confirm!==kk){UI.confirm=kk; renderEditor(); return}
-      delete S.quotes[id]; UI.confirm=''; if(!Object.keys(S.quotes).length){var nq=blankQuote(S); S.quotes[nq.id]=nq; S.cur=nq.id} else if(S.cur===id){S.cur=Object.keys(S.quotes)[0]} break}
+      (S.del=S.del||{})[id]=Date.now(); delete S.quotes[id]; UI.confirm=''; if(!Object.keys(S.quotes).length){var nq=blankQuote(S); S.quotes[nq.id]=nq; S.cur=nq.id} else if(S.cur===id){S.cur=Object.keys(S.quotes)[0]} break}
+    case 'sync-new': setSyncCode(newSyncCode()); return;
+    case 'sync-join':{var v=($('syncIn')||{}).value||''; v=v.trim().replace(/^.*sync=/,''); if(!/^[A-Za-z0-9_\-]{16,64}$/.test(v)){setStatus('Código no válido'); return} setSyncCode(v); return}
+    case 'sync-now': pullPush(); return;
+    case 'sync-off':{if(UI.confirm!=='sync'){UI.confirm='sync'; renderEditor(); return} UI.confirm=''; setSyncCode(''); return}
     case 'export': doExport(); return;
     case 'import': $('importIn').click(); return;
     default: return;
@@ -1050,6 +1135,9 @@ if(!raw){
 setView('edit');
 renderEditor();
 renderPreview();
+if(SY.code){ setTimeout(function(){pullPush()},600); }
+setInterval(function(){ if(document.visibilityState==='visible') pullPush(); },30000);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') pullPush(); });
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){schedulePreview()});
 })();
 </script>
