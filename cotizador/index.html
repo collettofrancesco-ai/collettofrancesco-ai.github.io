@@ -320,6 +320,7 @@ function initialState(){
 var S;
 try{ var raw=localStorage.getItem(LS); S=raw?JSON.parse(raw):null; }catch(e){S=null}
 if(!S||!S.quotes||!S.profile){S=initialState()}
+function normalize(){
 if(!S.quotes[S.cur]){var ks=Object.keys(S.quotes); if(ks.length) S.cur=ks[0]; else {var nq=blankQuote(S); S.quotes[nq.id]=nq; S.cur=nq.id}}
 if(!S.v2){
   var dp0=defaultProfile();
@@ -333,16 +334,39 @@ if(!S.v3){
   ['legalName','nit','address','city','phones','emails','website','signerName'].forEach(function(k){if(!S.profile[k]) S.profile[k]=dp1[k]});
   S.v3=true;
 }
+}
+normalize();
 var UI={tab:'quote',bulk:{},confirm:'',view:'edit'};
 var cur=function(){return S.quotes[S.cur]};
 
 /* ---------- guardado ---------- */
 var saveT=0, statusT=0;
 function setStatus(t){var el=$('status'); el.textContent=t; clearTimeout(statusT); if(t) statusT=setTimeout(function(){el.textContent=''},2500)}
-function persist(){
-  try{ cur().updated=Date.now(); localStorage.setItem(LS,JSON.stringify(S)); setStatus('Guardado'); }
-  catch(e){ setStatus('No se pudo guardar en este navegador'); }
+/* copia de seguridad en IndexedDB: si el navegador vacía localStorage, los datos se recuperan de aquí */
+function idb(fn){
+  return new Promise(function(res){
+    try{
+      var rq=indexedDB.open('cotizador',1);
+      rq.onupgradeneeded=function(){rq.result.createObjectStore('kv')};
+      rq.onsuccess=function(){try{fn(rq.result,res)}catch(e){res(null)}};
+      rq.onerror=function(){res(null)};
+    }catch(e){res(null)}
+  });
 }
+function idbSet(v){return idb(function(db,res){var t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,'state'); t.oncomplete=function(){res(true)}; t.onerror=function(){res(null)}})}
+function idbGet(){return idb(function(db,res){var r=db.transaction('kv').objectStore('kv').get('state'); r.onsuccess=function(){res(r.result||null)}; r.onerror=function(){res(null)}})}
+var askedPersist=false;
+function persist(){
+  clearTimeout(saveT); saveT=0;
+  var json;
+  try{ cur().updated=Date.now(); json=JSON.stringify(S); }catch(e){return}
+  var ok=false;
+  try{ localStorage.setItem(LS,json); ok=true; }catch(e){}
+  idbSet(json).then(function(r){ if(ok||r) setStatus('Guardado'); else setStatus('No se pudo guardar en este navegador'); });
+  if(!askedPersist){ askedPersist=true; try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){} }
+}
+window.addEventListener('pagehide',function(){ if(saveT) persist(); });
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden'&&saveT) persist(); });
 function changed(opts){
   clearTimeout(saveT); setStatus('Guardando…'); saveT=setTimeout(persist,350);
   schedulePreview();
@@ -722,6 +746,16 @@ $('bPdf').addEventListener('click',async function(){
 });
 
 /* ---------- inicio ---------- */
+if(!raw){
+  idbGet().then(function(v){
+    if(!v) return;
+    try{
+      var d=JSON.parse(v); if(!d||!d.quotes||!d.profile) return;
+      S=d; normalize(); renderEditor(); renderPreview(); setStatus('Datos recuperados');
+      try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}
+    }catch(e){}
+  });
+}
 setView('edit');
 renderEditor();
 renderPreview();
