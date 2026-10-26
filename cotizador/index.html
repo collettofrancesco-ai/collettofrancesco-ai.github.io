@@ -445,8 +445,9 @@ function changed(opts){
 
 /* ---------- cálculo ---------- */
 function totals(q){
-  if(q.priceMode==='manual') return {mode:'manual',total:num(q.manualTotal)};
-  var sub=0; q.sections.forEach(function(s){s.items.forEach(function(i){sub+=num(i.price)})});
+  var secSum=0; q.sections.forEach(function(s){secSum+=secCost(s,q)});
+  if(q.priceMode==='manual') return {mode:'manual',total:secSum>0?secSum:num(q.manualTotal),fromSecs:secSum>0};
+  var sub=secSum;
   var disc=sub*num(q.discount)/100, base=sub-disc, tax=q.ivaOn?base*num(q.iva)/100:0;
   return {mode:'auto',sub:sub,disc:disc,tax:tax,total:base+tax};
 }
@@ -813,7 +814,8 @@ function tabQuote(){
     '<label class="f">Cómo calcular el total<select data-b="q.priceMode" data-re="1"><option value="manual"'+(q.priceMode==='manual'?' selected':'')+'>Total único (lo escribo yo)</option><option value="auto"'+(q.priceMode==='auto'?' selected':'')+'>Suma de los precios por línea</option></select></label>'+
     fld('Texto del total','q.totalLabel',q.totalLabel);
   if(q.priceMode==='manual'){
-    h+=fld('Monto ('+esc(p.symbol)+')','q.manualTotal',q.manualTotal,'text',{ph:'95000'})+'<p class="hint">Escribe el monto sin puntos. El texto en letras se genera solo.</p>';
+    h+='<div id="manualBox"'+(t.fromSecs?' style="display:none"':'')+'>'+fld('Monto ('+esc(p.symbol)+')','q.manualTotal',q.manualTotal,'text',{ph:'95000'})+'<p class="hint">Escribe el monto sin puntos. El texto en letras se genera solo.</p></div>'+
+      '<p class="hint" id="totHint"'+(t.fromSecs?'':' style="display:none"')+'>El total se calcula sumando los costos de las secciones: <b>'+esc(money(t.total,p))+'</b></p>';
   }else{
     h+=chk('Mostrar el precio de cada línea en el documento','q.showPrices',q.showPrices,true)+
       '<div class="grid2">'+fld('Descuento %','q.discount',q.discount,'text',{ph:'0'})+fld('IVA %','q.iva',q.iva)+'</div>'+chk('Sumar IVA al total','q.ivaOn',q.ivaOn,true)+
@@ -892,6 +894,8 @@ function setPath(b,v){
 document.addEventListener('input',function(e){
   var t=e.target, b=t.dataset&&t.dataset.b; if(!b||t.tagName==='BUTTON') return;
   setPath(b,t.type==='checkbox'?t.checked:t.value);
+  if(/\.cost$/.test(b)||/\.price$/.test(b)){var tt=totals(cur()), mb=$('manualBox'), th=$('totHint');
+    if(mb) mb.style.display=tt.fromSecs?'none':''; if(th){th.style.display=tt.fromSecs?'':'none'; th.innerHTML='El total se calcula sumando los costos de las secciones: <b>'+esc(money(tt.total,S.profile))+'</b>'}}
   S.demo=S.demo&&false;
   changed({re:!!t.dataset.re});
 });
