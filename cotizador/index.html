@@ -137,6 +137,9 @@ input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-rad
 .meta dd{margin:0;font-weight:700}
 .intro{margin:12px 0 0;color:#2a3534;white-space:pre-line}
 .uw{display:flow-root}
+.seccost{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin:6px 0 4px;padding:5px 4px 5px 4px;border-top:1px solid var(--ac-soft);font-weight:700;color:var(--ac);font-size:13.5px}
+.seccost span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap;color:#17201f}
+.sec-cost{display:grid;grid-template-columns:1fr 130px;gap:8px;align-items:center;padding:0 8px 10px;font-size:13px;font-weight:600;color:var(--muted)}
 .u-pad{padding-bottom:12px}
 .sec{font:700 17px 'Barlow Condensed',sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--ac);border-bottom:1px solid var(--ac-soft);padding:13px 0 4px;margin:0 0 5px}
 .it{display:flex;gap:9px;align-items:baseline;padding:2.5px 0 2.5px 4px}
@@ -461,6 +464,10 @@ function waveSvg(p,h,flip){
   return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
 }
 function initials(n){var w=String(n||'').trim().split(/\s+/).filter(Boolean); return ((w[0]||'?')[0]+(w[1]?w[1][0]:'')).toUpperCase()}
+function secCost(s,q){
+  if(q.priceMode==='auto'){var t=0; s.items.forEach(function(i){t+=num(i.price)}); if(t>0) return t}
+  return num(s.cost);
+}
 function makeUnits(q,p){
   var u=[], t=totals(q);
   var meta=[['Para',q.to],['De',q.from],['Lugar',q.place],['Ref.',q.ref]].filter(function(r){return r[1]});
@@ -475,6 +482,8 @@ function makeUnits(q,p){
     };
     u.push({html:'<h3 class="sec">'+esc(s.title||'Sin título')+'</h3>',keep:!!first});
     its.forEach(function(i){u.push({html:itHtml(i)})});
+    var sc=secCost(s,q);
+    if(sc>0) u.push({html:'<div class="seccost"><span>Costo total · '+esc(s.title||'Sección')+'</span><span>'+esc(money(sc,p))+'</span></div>'});
   });
   if((q.terms||'').trim()) u.push({html:'<div class="terms"><h4>Condiciones</h4><p>'+esc(q.terms)+'</p></div>'});
   var brk='';
@@ -791,6 +800,7 @@ function tabQuote(){
           (q.showPrices?'<input type="text" inputmode="decimal" data-b="i.'+si+'.'+ii+'.price" value="'+esc(it.price)+'" placeholder="Precio" aria-label="Precio">':'')+
           '<span class="acts"><button class="ic" data-act="it-up" data-s="'+si+'" data-i="'+ii+'" aria-label="Subir">↑</button><button class="ic" data-act="it-down" data-s="'+si+'" data-i="'+ii+'" aria-label="Bajar">↓</button><button class="ic dng" data-act="it-del" data-s="'+si+'" data-i="'+ii+'" aria-label="Quitar">✕</button></span></div>';
       }).join('')+'</div>'+
+      (q.priceMode==='auto'&&s.items.some(function(i){return num(i.price)>0})?'<div class="sec-cost"><span>Costo de la sección (suma de las líneas)</span><b style="text-align:right">'+esc(money(secCost(s,q),p))+'</b></div>':'<label class="sec-cost"><span>Costo total de esta sección ('+esc(p.symbol)+')</span><input type="text" inputmode="decimal" data-b="s.'+si+'.cost" value="'+esc(s.cost)+'" placeholder="vacío = no se muestra"></label>')+
       '<div class="sec-foot"><button class="btn sm" data-act="it-add" data-s="'+si+'">+ Ítem</button><button class="btn sm" data-act="bulk-open" data-s="'+si+'">Pegar lista</button><button class="btn sm ghost" data-act="to-lib" data-s="'+si+'">Guardar en biblioteca</button></div>';
     }
     h+='</div>';
