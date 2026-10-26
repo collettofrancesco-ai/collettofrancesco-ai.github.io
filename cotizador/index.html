@@ -124,7 +124,9 @@ input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-rad
 .mono{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 34px 'Barlow Condensed',sans-serif;letter-spacing:.04em}
 .cname{font:700 22px 'Barlow Condensed',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#17201f}
 .page .band.bot{top:auto;bottom:0}
-.page .foot{position:absolute;left:64px;width:666px;bottom:72px;display:flex;justify-content:space-between;gap:20px;font-size:11px;color:#5e6b6a;border-top:1px solid #dde4e4;padding-top:7px}
+.page .pfoot{position:absolute;left:64px;width:666px;bottom:76px}
+.page .foot{display:flex;justify-content:space-between;gap:20px;font-size:11px;color:#5e6b6a;border-top:1px solid #dde4e4;padding-top:6px;margin-bottom:6px}
+.cogrid{display:grid;grid-template-columns:1fr 1fr;gap:0 26px}
 .dochead{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;border-bottom:2px solid var(--ac);padding-bottom:9px;margin-bottom:14px}
 .dochead .k{font:700 30px 'Barlow Condensed',sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--ac);line-height:1}
 .dochead .n{font-weight:600;font-size:13px;color:#4a5857;margin-top:4px}
@@ -159,7 +161,7 @@ input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-rad
 .sign .ln{width:230px;border-top:1px solid #17201f;margin-bottom:5px}
 .sign b{font-size:14px}
 .sign span{font-size:12.5px;color:#4a5857}
-.co{margin-top:22px;padding-top:10px;border-top:1px solid #dde4e4;display:grid;grid-template-columns:96px 1fr;row-gap:2px;font-size:12px}
+.co{margin:0;display:grid;grid-template-columns:84px 1fr;row-gap:2px;font-size:12px;line-height:15px;align-content:start}
 .co dt{font:600 10.5px 'Barlow',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--ac);padding-top:1px}
 .co dd{margin:0;font-weight:500;overflow-wrap:anywhere}
 
@@ -395,8 +397,18 @@ function makeUnits(q,p){
   u.push({html:'<div class="close">'+brk+'<div class="totbar"><span class="l">'+esc(q.totalLabel||'Total')+'</span><span class="v">'+esc(money(t.total,p))+'</span></div>'+
     '<p class="words">Son: '+esc(totalWords(t.total,p))+'</p>'+pay+
     '<div class="sign"><div class="ln"></div><b>'+esc(p.signerName||'')+'</b><span>'+esc(p.signerTitle||'')+'</span></div>'+
-    (co.length?'<dl class="co">'+co.map(function(r){return '<dt>'+esc(r[0])+'</dt><dd>'+esc(r[1])+'</dd>'}).join('')+'</dl>':'')+'</div>'});
+    '</div>'});
   return u;
+}
+function companyRows(p){
+  return [['Dirección',p.address],['Ciudad',p.city],['Teléfonos',p.phones],['Correo',p.emails],['Sitio web',p.website],['Razón social',p.legalName],['NIT',p.nit]]
+    .concat((p.extras||[]).map(function(x){return [x.label,x.value]})).filter(function(r){return r[1]});
+}
+function companyFoot(p){
+  var rows=companyRows(p); if(!rows.length) return '';
+  var n=Math.ceil(rows.length/2);
+  var col=function(a){return '<dl class="co">'+a.map(function(r){return '<dt>'+esc(r[0])+'</dt><dd>'+esc(r[1])+'</dd>'}).join('')+'</dl>'};
+  return '<div class="cogrid">'+col(rows.slice(0,n))+col(rows.slice(n))+'</div>';
 }
 var PAGE_H=1123, P1_TOP=262, PN_TOP=78, BOTTOM=112;
 async function buildPages(q,p,host){
@@ -409,10 +421,11 @@ async function buildPages(q,p,host){
   try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
   var hs=els.map(function(d){return Math.ceil(d.getBoundingClientRect().height)});
   document.body.removeChild(probe);
-  var pages=[[]], used=0, cap=PAGE_H-P1_TOP-BOTTOM;
+  var nRows=Math.ceil(companyRows(p).length/2), footH=26+nRows*17+(nRows?8:0), BOT=76+footH+16;
+  var pages=[[]], used=0, cap=PAGE_H-P1_TOP-BOT;
   units.forEach(function(u,i){
     var need=hs[i]+(u.keep&&hs[i+1]?hs[i+1]:0);
-    if(used+need>cap-6 && used>0){pages.push([]); used=0; cap=PAGE_H-PN_TOP-BOTTOM}
+    if(used+need>cap-6 && used>0){pages.push([]); used=0; cap=PAGE_H-PN_TOP-BOT}
     pages[pages.length-1].push(i); used+=hs[i];
   });
   host.innerHTML='';
@@ -426,8 +439,8 @@ async function buildPages(q,p,host){
     if(first){
       h+='<div class="brandhead">'+(p.logo?'<img alt="" src="'+p.logo+'">':'<div class="mono" style="background:'+esc(p.accent)+'">'+esc(initials(p.name))+'</div><div class="cname">'+esc(p.name)+'</div>')+(p.tagline?'<div class="tag">'+esc(p.tagline)+'</div>':'')+'</div>';
     }
-    h+='<div class="flow" style="top:'+top+'px;height:'+(PAGE_H-top-BOTTOM)+'px">'+idx.map(function(i){return '<div class="uw">'+units[i].html+'</div>'}).join('')+'</div>';
-    h+='<div class="foot"><span>'+esc(p.footer||(p.name+(lastCo&&!first?'':'')))+'</span><span>'+esc(q.number)+' · Página '+(pi+1)+' de '+n+'</span></div>';
+    h+='<div class="flow" style="top:'+top+'px;height:'+(PAGE_H-top-BOT)+'px">'+idx.map(function(i){return '<div class="uw">'+units[i].html+'</div>'}).join('')+'</div>';
+    h+='<div class="pfoot"><div class="foot"><span>'+esc(p.footer||p.name)+'</span><span>'+esc(q.number)+' · Página '+(pi+1)+' de '+n+'</span></div>'+companyFoot(p)+'</div>';
     pg.innerHTML=h; host.appendChild(pg);
   });
   return n;
