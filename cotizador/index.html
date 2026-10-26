@@ -361,11 +361,7 @@ function parseLines(str){
   });
 }
 function linesOf(items){return items.map(function(i){return (i.qty?i.qty+' ':'')+i.text}).join('\n')}
-function nextNumber(S){
-  var y=new Date().getFullYear(), max=0;
-  Object.keys(S.quotes).forEach(function(k){var m=/^COT-(\d{4})-(\d+)$/.exec(S.quotes[k].number||''); if(m&&+m[1]===y) max=Math.max(max,+m[2])});
-  return 'COT-'+y+'-'+String(max+1).padStart(3,'0');
-}
+function nextNumber(S){return seq(S.quotes)}
 function blankQuote(S){
   var p=S.profile;
   return {id:uid(),number:nextNumber(S),date:todayISO(),to:'',from:p.signerName||'',place:'',ref:'',status:'borrador',intro:p.intro,
@@ -374,7 +370,7 @@ function blankQuote(S){
 }
 function sampleQuote(S){
   var q=blankQuote(S);
-  q.number='COT-'+new Date().getFullYear()+'-001'; q.to='Nombre del cliente'; q.from='Tu nombre'; q.place='Aire libre';
+  q.number='01'; q.to='Nombre del cliente'; q.from='Tu nombre'; q.place='Aire libre';
   q.ref='Evento 2 días — Carnaval 2027'; q.totalLabel='Costo total por 2 días'; q.manualTotal='95000'; q.caps=true;
   [0,1,2,3,4,5,6,7,8,9].forEach(function(i){q.sections.push({id:uid(),title:LIB_SEED[i][0],items:parseLines(LIB_SEED[i][1])})});
   return q;
@@ -566,7 +562,7 @@ window.addEventListener('resize',fitPreview);
 /* ---------- recibos y contratos ---------- */
 var curR=function(){return S.receipts[S.curR]};
 var curC=function(){return S.contracts[S.curC]};
-function seq(map){var y=new Date().getFullYear(),max=0; Object.keys(map).forEach(function(k){var o=map[k]; if(o.year===y){var n=parseInt(o.number,10); if(n>max) max=n}}); return String(max+1).padStart(3,'0')}
+function seq(map){var max=0; Object.keys(map).forEach(function(k){var m=/(\d+)\s*$/.exec(map[k].number||''); if(m&&+m[1]>max) max=+m[1]}); return String(max+1).padStart(2,'0')}
 function blankReceipt(){
   var p=S.profile;
   return {id:uid(),number:seq(S.receipts),year:new Date().getFullYear(),date:todayISO(),city:String(p.city||'Santa Cruz').split(/\s+de\s+la\s+/i)[0],
