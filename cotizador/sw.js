@@ -1,5 +1,5 @@
 // Cotizador: funciona sin internet. Sirve desde la caché y actualiza en segundo plano.
-const CACHE = 'cotizador-v2';
+const CACHE = 'cotizador-v3';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/html2canvas.min.js', 'lib/jspdf.umd.min.js',
@@ -23,7 +23,7 @@ self.addEventListener('fetch', e => {
   // La página se pide primero a internet (así siempre ves la última versión); sin conexión sale de la caché.
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request).then(res => {
+      fetch(e.request, { cache: 'no-cache' }).then(res => {
         if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put('index.html', copy)); }
         return res;
       }).catch(() => caches.match('index.html').then(hit => hit || caches.match('./')))
@@ -33,7 +33,7 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(e.request, { ignoreSearch: true }).then(hit => {
-        const net = fetch(e.request).then(res => {
+        const net = fetch(e.request, { cache: 'no-cache' }).then(res => {
           if (res && res.ok) cache.put(e.request, res.clone());
           return res;
         }).catch(() => hit);
