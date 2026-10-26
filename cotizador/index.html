@@ -157,8 +157,8 @@ input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-rad
 .pay{margin-top:14px}
 .pay h4{margin:0 0 3px;font:700 14px 'Barlow Condensed',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--ac)}
 .pay p{margin:0;font-size:12.5px;color:#364241;white-space:pre-line}
-.sign{margin:14px 0 0;display:flex;flex-direction:column;align-items:center}
-.sign .sig{font-family:'Mrs Saint Delafield','Segoe Script',cursive;font-size:46px;line-height:50px;height:50px;color:#1b2a52;white-space:nowrap;transform:rotate(-3deg)}
+.uw.abs{position:absolute;left:0;right:0;bottom:0}
+.sign{margin:0;padding-top:30px;display:flex;flex-direction:column;align-items:center}
 .sign .ln{width:230px;border-top:1px solid #17201f;margin-bottom:5px}
 .sign b{font-size:14px}
 .sign span{font-size:12.5px;color:#4a5857}
@@ -397,8 +397,8 @@ function makeUnits(q,p){
   var pay=(q.showBank!==false&&(p.bank||'').trim())?'<div class="pay"><h4>Datos de pago</h4><p>'+esc(p.bank)+'</p></div>':'';
   u.push({html:'<div class="close">'+brk+'<div class="totbar"><span class="l">'+esc(q.totalLabel||'Total')+'</span><span class="v">'+esc(money(t.total,p))+'</span></div>'+
     '<p class="words">Son: '+esc(totalWords(t.total,p))+'</p>'+pay+
-    '<div class="sign"><div class="sig">'+(q.signed?esc(p.signerName||''):'')+'</div><div class="ln"></div>'+(q.signed?'<b>'+esc(p.signerName||'')+'</b><span>'+esc(p.signerTitle||'')+'</span>':'')+'</div>'+
     '</div>'});
+  u.push({abs:true,html:'<div class="sign"><div class="ln"></div>'+(q.signed?'<b>'+esc(p.signerName||'')+'</b><span>'+esc(p.signerTitle||'')+'</span>':'')+'</div>'});
   return u;
 }
 function companyRows(p){
@@ -440,7 +440,7 @@ async function buildPages(q,p,host){
     if(first){
       h+='<div class="brandhead">'+(p.logo?'<img alt="" src="'+p.logo+'">':'<div class="mono" style="background:'+esc(p.accent)+'">'+esc(initials(p.name))+'</div><div class="cname">'+esc(p.name)+'</div>')+(p.tagline?'<div class="tag">'+esc(p.tagline)+'</div>':'')+'</div>';
     }
-    h+='<div class="flow" style="top:'+top+'px;height:'+(PAGE_H-top-BOT)+'px">'+idx.map(function(i){return '<div class="uw">'+units[i].html+'</div>'}).join('')+'</div>';
+    h+='<div class="flow" style="top:'+top+'px;height:'+(PAGE_H-top-BOT)+'px">'+idx.map(function(i){return '<div class="uw'+(units[i].abs?' abs':'')+'">'+units[i].html+'</div>'}).join('')+'</div>';
     h+='<div class="pfoot"><div class="foot"><span>'+esc(p.footer||p.name)+'</span><span>'+esc(q.number)+' · Página '+(pi+1)+' de '+n+'</span></div>'+companyFoot(p)+'</div>';
     pg.innerHTML=h; host.appendChild(pg);
   });

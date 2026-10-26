@@ -1,5 +1,5 @@
 // Cotizador: funciona sin internet. Sirve desde la caché y actualiza en segundo plano.
-const CACHE = 'cotizador-v4';
+const CACHE = 'cotizador-v5';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/html2canvas.min.js', 'lib/jspdf.umd.min.js',
@@ -7,7 +7,7 @@ const FILES = [
   'fonts/barlow-latin-400-normal.woff2', 'fonts/barlow-latin-500-normal.woff2',
   'fonts/barlow-latin-600-normal.woff2', 'fonts/barlow-latin-700-normal.woff2',
   'fonts/barlow-condensed-latin-500-normal.woff2', 'fonts/barlow-condensed-latin-600-normal.woff2',
-  'fonts/barlow-condensed-latin-700-normal.woff2', 'fonts/mrs-saint-delafield-latin-400-normal.woff2',
+  'fonts/barlow-condensed-latin-700-normal.woff2',
   'icons/icon-192.png', 'icons/icon-512.png'
 ];
 self.addEventListener('install', e => {
