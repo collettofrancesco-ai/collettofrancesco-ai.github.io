@@ -1,5 +1,5 @@
 // Cotizador: funciona sin internet. Sirve desde la caché y actualiza en segundo plano.
-const CACHE = 'cotizador-v14';
+const CACHE = 'cotizador-v15';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/html2canvas.min.js', 'lib/jspdf.umd.min.js',

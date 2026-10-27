@@ -205,6 +205,7 @@ input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-rad
 .rsg>div{width:240px;text-align:center;position:relative;padding-top:80px;font-weight:700}
 .rsg>div .ln{border-top:1.5px solid #10202e;margin-bottom:3px}
 .rsg>div small{display:block;font-size:13px;font-weight:600}
+.rsg>div small.rnm{font-size:14px;font-weight:700;text-transform:uppercase;overflow-wrap:anywhere}
 .rsg img.sg{position:absolute;left:50%;top:6px;width:150px;transform:translateX(-50%)}
 /* contrato */
 .cpage .band{display:block}
@@ -694,7 +695,7 @@ function buildReceipt(r,p,host){
     '<div class="rcp"><b>Por concepto de.</b> <span>'+esc(r.concept)+'</span></div>'+
     (tot?'<div class="rtot"><span><b>Total:</b><u>'+esc(fmt(tot))+' '+esc(p.symbol||'Bs')+'</u></span><span><b>A cuenta:</b><u>'+esc(fmt(paid))+' '+esc(p.symbol||'Bs')+'</u></span><span><b>Saldo:</b><u>'+esc(fmt(bal))+'.-</u></span></div>':'')+
     '<div class="rsg"><div>'+sigImg(r.signed)+'<div class="ln"></div>Recibí conforme<small>C.I.: '+esc(p.signerCI||'')+'</small></div>'+
-    '<div><div class="ln"></div>Entregué conforme<small>C.I.: '+esc(r.clientCI)+'</small></div></div>'+
+    '<div><div class="ln"></div>Entregué conforme'+(r.from?'<small class="rnm">'+esc(r.from)+'</small>':'')+'<small>C.I.: '+esc(r.clientCI)+'</small></div></div>'+
     '</div></div>';
   host.innerHTML='';
   var pg=document.createElement('div'); pg.className='paper page rpage'; pg.style.cssText=accentVars(p); pg.innerHTML=h; host.appendChild(pg);
@@ -1105,7 +1106,8 @@ $('bPdf').addEventListener('click',async function(){
   try{
     var q=cur(), k=kind(); await buildAny(host);
     var wmm=210, hmm=DOC.h/DOC.w*210;
-    var doc=new window.jspdf.jsPDF({unit:'mm',format:[wmm,hmm],orientation:hmm>wmm?'portrait':'landscape',compress:true});
+    var lockPw=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
+    var doc=new window.jspdf.jsPDF({unit:'mm',format:[wmm,hmm],orientation:hmm>wmm?'portrait':'landscape',compress:true,encryption:{userPassword:'',ownerPassword:lockPw,userPermissions:['print']}});
     var pgs=host.querySelectorAll('.page');
     for(var i=0;i<pgs.length;i++){
       var cv=await window.html2canvas(pgs[i],{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,width:DOC.w,height:DOC.h,windowWidth:794});
